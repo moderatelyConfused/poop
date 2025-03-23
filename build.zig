@@ -1,8 +1,20 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+
+    const target_os = target.result.os.tag;
+
+    // Dependencies
+    const scoop_dep_lazy = if (target_os.isDarwin()) b.lazyDependency("scoop", .{
+        .target = target,
+        .optimize = optimize,
+    }) else null;
+    const scoop_mod = if (scoop_dep_lazy) |scoop_dep| scoop_dep.module("scoop") else undefined;
+
+    // Executable
+    const exe_step = b.step("exe", "Run executable");
 
     const exe = b.addExecutable(.{
         .name = "poop",
@@ -14,7 +26,19 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    switch (target_os) {
+        .linux => {},
+        .macos => exe.root_module.addImport("scoop", scoop_mod),
+        else => std.debug.panic("Unsupported OS: {s}", .{@tagName(target_os)}),
+    }
+
     b.installArtifact(exe);
+
+    const exe_run = b.addRunArtifact(exe);
+    if (b.args) |args| {
+        exe_run.addArgs(args);
+    }
+    exe_step.dependOn(&exe_run.step);
 
     const release = b.step("release", "make an upstream binary release");
     const release_targets = [_]std.Target.Query{
