@@ -2,7 +2,7 @@
     .name = .poop,
     .version = "0.2.0",
     .fingerprint = 0xbb90f5c9c7a9a787, // Changing this has security and trust implications.
-    .minimum_zig_version = "0.14.0",
+    .minimum_zig_version = "0.15.1",
     .dependencies = .{
         .scoop = .{
             .url = "git+https://codeberg.org/tensorush/scoop.git#c7d32d0afd1b11c4d4e78bd713d4344c8a1b81f9",

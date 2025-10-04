@@ -62,6 +62,7 @@ pub const ProgressBar = struct {
     stdout: std.fs.File,
     buf: std.ArrayList(u8),
     last_rendered: std.time.Instant,
+    gpa: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, stdout: std.fs.File) !Self {
         const width = getScreenWidth(stdout.handle);
@@ -73,11 +74,12 @@ pub const ProgressBar = struct {
             .estimate = 1,
             .stdout = stdout,
             .buf = buf,
+            .gpa = allocator,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        self.buf.deinit();
+        self.buf.deinit(self.gpa);
     }
 
     /// Clears then renders bar if enough time has passed since last render.
@@ -90,9 +92,9 @@ pub const ProgressBar = struct {
         self.last_rendered = now;
         const width = getScreenWidth(self.stdout.handle);
         if (width + WIDTH_PADDING > self.buf.capacity) {
-            try self.buf.resize(width + WIDTH_PADDING);
+            try self.buf.resize(self.gpa, width + WIDTH_PADDING);
         }
-        var writer = self.buf.writer();
+        var writer = self.buf.writer(self.gpa);
 
         try writer.print("{s}{s}{s} {d: >5} runs ", .{ EscapeCodes.cyan, self.spinner.get(), EscapeCodes.reset, self.current });
         self.spinner.next();

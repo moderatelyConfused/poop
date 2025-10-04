@@ -22,13 +22,33 @@ pub fn build(b: *std.Build) !void {
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
             .strip = b.option(bool, "strip", "strip the binary"),
         }),
     });
 
     switch (target_os) {
         .linux => {},
-        .macos => exe.root_module.addImport("scoop", scoop_mod),
+        .macos => {
+            exe.root_module.addImport("scoop", scoop_mod);
+
+            // Safety net: replicate scoop’s Darwin setup at the top level
+            const sdk_path = std.zig.system.darwin.getSdk(b.allocator, &target.result) orelse @panic("Failed to find SDK!");
+
+            // 🔑 Let the *scoop module* see Kernel.framework headers so @cImport finds <sys/kdebug.h>
+            const kernel_headers = b.pathJoin(&.{ sdk_path, "System/Library/Frameworks/Kernel.framework/Headers" });
+            scoop_mod.addSystemIncludePath(.{ .cwd_relative = kernel_headers });
+
+            // Optional but often helpful when headers guard private/unstable APIs:
+            scoop_mod.addCMacro("__APPLE_API_PRIVATE", "1");
+            scoop_mod.addCMacro("__APPLE_API_UNSTABLE", "1");
+
+            exe.root_module.addSystemFrameworkPath(.{
+                .cwd_relative = b.pathJoin(&.{ sdk_path, "System/Library/PrivateFrameworks" }),
+            });
+            exe.root_module.linkFramework("kperf", .{});
+            exe.root_module.linkFramework("kperfdata", .{});
+        },
         else => std.debug.panic("Unsupported OS: {s}", .{@tagName(target_os)}),
     }
 
@@ -42,6 +62,10 @@ pub fn build(b: *std.Build) !void {
 
     const release = b.step("release", "make an upstream binary release");
     const release_targets = [_]std.Target.Query{
+        .{
+            .cpu_arch = .aarch64,
+            .os_tag = .macos,
+        },
         .{
             .cpu_arch = .aarch64,
             .os_tag = .linux,
@@ -71,6 +95,31 @@ pub fn build(b: *std.Build) !void {
                 .strip = true,
             }),
         });
+
+        switch (resolved_target.result.os.tag) {
+            .linux => {},
+            .macos => {
+                rel_exe.root_module.addImport("scoop", scoop_mod);
+
+                // Safety net: replicate scoop’s Darwin setup at the top level
+                const sdk_path = std.zig.system.darwin.getSdk(b.allocator, &target.result) orelse @panic("Failed to find SDK!");
+
+                // 🔑 Let the *scoop module* see Kernel.framework headers so @cImport finds <sys/kdebug.h>
+                const kernel_headers = b.pathJoin(&.{ sdk_path, "System/Library/Frameworks/Kernel.framework/Headers" });
+                scoop_mod.addSystemIncludePath(.{ .cwd_relative = kernel_headers });
+
+                // Optional but often helpful when headers guard private/unstable APIs:
+                scoop_mod.addCMacro("__APPLE_API_PRIVATE", "1");
+                scoop_mod.addCMacro("__APPLE_API_UNSTABLE", "1");
+
+                rel_exe.root_module.addSystemFrameworkPath(.{
+                    .cwd_relative = b.pathJoin(&.{ sdk_path, "System/Library/PrivateFrameworks" }),
+                });
+                rel_exe.root_module.linkFramework("kperf", .{});
+                rel_exe.root_module.linkFramework("kperfdata", .{});
+            },
+            else => std.debug.panic("Unsupported OS: {s}", .{@tagName(target_os)}),
+        }
 
         const install = b.addInstallArtifact(rel_exe, .{});
         install.dest_dir = .prefix;

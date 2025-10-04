@@ -109,7 +109,7 @@ pub fn main() !void {
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
     const stdout_w = &stdout_writer.interface;
 
-    var commands = std.ArrayList(Command).init(arena);
+    var commands: std.ArrayList(Command) = .empty;
     var max_nano_seconds: u64 = std.time.ns_per_s * 5;
     var color: ColorMode = .auto;
     var allow_failures = false;
@@ -118,11 +118,11 @@ pub fn main() !void {
     while (arg_i < args.len) : (arg_i += 1) {
         const arg = args[arg_i];
         if (!std.mem.startsWith(u8, arg, "-")) {
-            var cmd_argv = std.ArrayList([]const u8).init(arena);
-            try parseCmd(&cmd_argv, arg);
-            try commands.append(.{
+            var cmd_argv: std.ArrayList([]const u8) = .empty;
+            try parseCmd(arena, &cmd_argv, arg);
+            try commands.append(arena, .{
                 .raw_cmd = arg,
-                .argv = try cmd_argv.toOwnedSlice(),
+                .argv = try cmd_argv.toOwnedSlice(arena),
                 .measurements = undefined,
                 .sample_count = undefined,
             });
@@ -241,7 +241,7 @@ pub fn main() !void {
                     _ = std.os.linux.ioctl(perf_fds[0], PERF.EVENT_IOC.DISABLE, PERF.IOC_FLAG_GROUP);
                     _ = std.os.linux.ioctl(perf_fds[0], PERF.EVENT_IOC.RESET, PERF.IOC_FLAG_GROUP);
                 },
-                .macos => kperf_trace = try KperfTrace.startSampling(arena, &counters, .{ .target_pid = std.c.getpid(), .is_gpa = false }),
+                .macos => {}, //kperf_trace = try KperfTrace.startSampling(arena, &counters, .{ .target_pid = std.c.getpid(), .is_gpa = false }),
                 else => unreachable,
             }
 
@@ -251,14 +251,27 @@ pub fn main() !void {
             child.stdout_behavior = .Ignore;
             child.stderr_behavior = .Pipe;
             child.request_resource_usage_statistics = true;
+            if (native_os == .macos) {
+                child.start_suspended = true;
+            }
 
-            const start = timer.read();
+            var start = timer.read();
             try child.spawn();
+
+            if (native_os == .macos) {
+                kperf_trace = try KperfTrace.startSampling(arena, &counters, .{
+                    .target_pid = child.id,
+                    .is_gpa = false,
+                });
+
+                try std.posix.kill(child.id, std.posix.SIG.CONT);
+                start = timer.read();
+            }
 
             var poller = std.io.poll(stderr_fba.allocator(), enum { stderr }, .{ .stderr = child.stderr.? });
             defer poller.deinit();
 
-            const child_stderr = poller.fifo(.stderr);
+            const child_stderr = poller.reader(.stderr);
             var stderr_truncated = false;
 
             while (true) {
@@ -310,7 +323,7 @@ pub fn main() !void {
                                 \\──────────────────────────────────────────────
                                 \\
                             ,
-                                .{child_stderr.buf[child_stderr.head..][0..child_stderr.count]},
+                                .{child_stderr.buffered()},
                             );
                         } else {
                             std.debug.print(
@@ -319,7 +332,7 @@ pub fn main() !void {
                                 \\──────────────────────────────────────────────
                                 \\
                             ,
-                                .{child_stderr.buf[child_stderr.head..][0..child_stderr.count]},
+                                .{child_stderr.buffered()},
                             );
                         }
                         std.process.exit(1);
@@ -452,9 +465,9 @@ pub fn main() !void {
     try stdout_w.flush(); // 💩
 }
 
-fn parseCmd(list: *std.ArrayList([]const u8), cmd: []const u8) !void {
+fn parseCmd(arena: std.mem.Allocator, list: *std.ArrayList([]const u8), cmd: []const u8) !void {
     var it = std.mem.tokenizeScalar(u8, cmd, ' ');
-    while (it.next()) |s| try list.append(s);
+    while (it.next()) |s| try list.append(arena, s);
 }
 
 fn readPerfFd(fd: fd_t) usize {
