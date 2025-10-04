@@ -133,7 +133,7 @@ pub fn main() !void {
             });
         } else if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
             try stdout_w.writeAll(usage_text);
-            try stdout_w.flush(); // 💩
+            try stdout_w.flush();
             return std.process.cleanExit();
         } else if (std.mem.eql(u8, arg, "-d") or std.mem.eql(u8, arg, "--duration")) {
             arg_i += 1;
@@ -177,7 +177,7 @@ pub fn main() !void {
 
     if (commands.items.len == 0) {
         try stdout_w.writeAll(usage_text);
-        try stdout_w.flush(); // 💩
+        try stdout_w.flush();
         std.process.exit(1);
     }
 
@@ -463,11 +463,11 @@ pub fn main() !void {
                 try printMeasurement(tty_conf, stdout_w, measurement, field.name, first_measurement, commands.items.len);
             }
 
-            try stdout_w.flush(); // 💩
+            try stdout_w.flush();
         }
     }
 
-    try stdout_w.flush(); // 💩
+    try stdout_w.flush();
 }
 
 fn parseCmd(arena: std.mem.Allocator, list: *std.ArrayList([]const u8), cmd: []const u8) !void {
@@ -645,7 +645,7 @@ fn printMeasurement(
             };
             if (m.mean > f.mean) {
                 if (is_sig) {
-                    try w.writeAll("💩");
+                    try w.writeAll("☠️");
                     try tty_conf.setColor(w, .bright_red);
                 } else {
                     try tty_conf.setColor(w, .dim);
