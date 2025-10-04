@@ -266,7 +266,7 @@ pub fn main() !void {
             if (native_os == .macos) {
                 kperf_trace = try KperfTrace.startSampling(arena, &counters, .{
                     .target_pid = child.id,
-                    .is_gpa = false,
+                    .is_gpa = true,
                 });
 
                 try std.posix.kill(child.id, std.posix.SIG.CONT);
