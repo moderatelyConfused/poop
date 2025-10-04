@@ -10,6 +10,11 @@ const system = switch (native_os) {
     else => unreachable,
 };
 
+const Child = switch (native_os) {
+    .macos => @import("modded-stdlib/Child.zig"),
+    else => std.process.Child,
+};
+
 const progress = @import("progress.zig");
 
 const pid_t = std.os.pid_t;
@@ -245,7 +250,7 @@ pub fn main() !void {
                 else => unreachable,
             }
 
-            var child = std.process.Child.init(command.argv, arena);
+            var child = Child.init(command.argv, arena);
 
             child.stdin_behavior = .Ignore;
             child.stdout_behavior = .Ignore;
